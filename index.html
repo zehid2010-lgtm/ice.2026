@@ -328,15 +328,11 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
     </div>
     <div class="card" id="clientes-card">
       <div class="card-title">Clientes que miden</div>
-      <div class="card-sub">Primero cargá el Excel mensual y después elegí el cliente auditable.</div>
+      <div class="card-sub">La base se carga automáticamente desde Google Sheets.</div>
       <div class="excel-upload-box">
-        <div class="excel-upload-title">📂 Cargar Excel mensual</div>
-        <div class="excel-upload-sub">Seleccioná el archivo con las solapas <b>Mes_Anterior</b> y <b>Clientes_Medir_Actual</b>. No tenés que modificar el formato.</div>
-        <div class="excel-upload-row">
-          <input type="file" id="archivo-xlsx-mensual-top" accept=".xlsx,.xls" onchange="sincronizarArchivoExcel('top')">
-          <button class="client-small-btn primary" onclick="importarExcelMensualDesde('top')">Leer Excel</button>
-        </div>
-        <div class="excel-upload-status" id="excel-upload-status">Sin archivo cargado.</div>
+        <div class="excel-upload-title">🔄 Base conectada a Google Sheets</div>
+        <div class="excel-upload-sub">La app lee automáticamente <b>Mes_Anterior</b> y <b>Clientes_Medir_Actual</b>. No hace falta seleccionar archivo.</div>
+        <div class="excel-upload-status" id="excel-upload-status">Cargando base...</div>
       </div>
       <select id="sel-cliente" class="client-select" onchange="seleccionarCliente(this.value)">
         <option value="">Seleccionar cliente...</option>
@@ -346,48 +342,6 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
         <div class="desvio-cell" id="prev-score-cell"><div class="dlbl">Mes anterior</div><div class="dval" id="prev-score">0</div></div>
         <div class="desvio-cell" id="desvio-score-cell"><div class="dlbl">Desvío actual</div><div class="dval" id="desvio-score">0</div></div>
       </div>
-      <details class="client-import">
-        <summary>➕ Cargar bases mensuales</summary>
-        <p class="note"><b>1) Cierre mes anterior:</b> pegá el export ICE con puntaje. <b>2) Clientes a medir:</b> pegá la lista de clientes del mes actual. La app cruza por código de cliente.</p>
-        <div class="client-actions" style="align-items:center;flex-wrap:wrap">
-          <input type="file" id="archivo-xlsx-mensual" accept=".xlsx,.xls" style="flex:1;min-width:190px;border:1px solid #ead8d2;border-radius:12px;padding:9px;background:#fff;font-size:12px">
-          <button class="client-small-btn primary" onclick="importarExcelMensual()">Leer Excel con solapas</button>
-        </div>
-        <p class="note"><b>No cambia el formato del archivo:</b> la app lee las solapas tal como las bajás: <b>Mes_Anterior</b> con Detalle/Cedi/Jefe/Código Ruta Preventa/Out-CL/Puntaje y <b>Clientes_Medir_Actual</b> con Territorio/Jefe/Ruta/Outnum/Cliente/Pack-Local.</p>
-        <textarea id="csv-mes-anterior" placeholder="Solapa 1: Cierre mes anterior / export ICE
-
-Formato export aceptado:
-Detalle;Cedi;Jefe Desarrollador;Código Ruta Preventa;Out-CL;Puntaje
-Tucumán;Planta Tucumán;Zehid, Ricardo;3141;3155022 - Salustros Manuel;0,2498"></textarea>
-        <div class="client-actions">
-          <button class="client-small-btn primary" onclick="importarMesAnteriorCSV()">Importar cierre mes anterior</button>
-        </div>
-        <textarea id="csv-clientes" placeholder="Solapa 2: Clientes_Medir_Actual
-
-Formato exacto aceptado:
-Territorio;Jefe;Ruta;Outnum;Cliente;Pack-Local
-Tucumán;Zehid, Ricardo Miguel Antonio;3140;3100959;Quiroga Osvaldo Milton;Autoservicios
-Tucumán;Zehid, Ricardo Miguel Antonio;3140;3135959;Flores Maria Celeste;Tradicionales"></textarea>
-        <div class="client-actions">
-          <button class="client-small-btn primary" onclick="importarClientesActualCSV()">Importar clientes a medir</button>
-          <button class="client-small-btn" onclick="limpiarBasesMensuales()">Limpiar bases</button>
-        </div>
-        <div class="client-mini-grid">
-          <input type="text" id="nuevo-codigo" placeholder="Código">
-          <input type="text" id="nuevo-cliente" placeholder="Cliente / PDV">
-          <input type="text" id="nuevo-ruta" placeholder="Ruta">
-          <select id="nuevo-segmento">
-            <option value="autoservicio">Autoservicio</option>
-            <option value="oro">Oro</option>
-            <option value="plata">Plata</option>
-            <option value="bronce">Bronce</option>
-            <option value="kiosco">Kiosco</option>
-          </select>
-        </div>
-        <div class="client-actions">
-          <button class="client-small-btn" onclick="guardarClienteManual()">Agregar cliente a medir</button>
-        </div>
-      </details>
     </div>
     <div class="home-score">
       <div class="home-score-top">
@@ -1193,7 +1147,7 @@ function navBack(){
   }
 }
 
-const WEBAPP_RESULTADOS_URL = 'https://script.google.com/macros/s/AKfycbx8MnzJY4LhlW52JXNkaKr1tJOb3wQnHN0n5uIFzngAA45y1jE6fzFitx0GOK7OiTHO/exec';
+const WEBAPP_RESULTADOS_URL = 'https://script.google.com/macros/s/AKfycbyOTUNyO1IQUh-a3BGvZd6BcT6fu1GNnxCGo3cM8CZyv7wv2amm_WGLh_SViVS14g10/exec';
 
 function fechaArgentina(){
   var d=new Date();
@@ -1248,6 +1202,29 @@ async function guardarResultadoSheets(payload){
   return true;
 }
 
+
+async function cargarBasesDesdeSheets(){
+  var status=document.getElementById('excel-upload-status');
+  if(status) status.textContent='Cargando base desde Google Sheets...';
+  try{
+    var resp=await fetch(WEBAPP_RESULTADOS_URL+'?action=bases&t='+Date.now(), {method:'GET', cache:'no-store'});
+    var data=await resp.json();
+    if(!data.ok) throw new Error(data.error||'Respuesta inválida del Apps Script.');
+    mesAnteriorDB = Array.isArray(data.mes_anterior) ? data.mes_anterior : [];
+    clientesDB = Array.isArray(data.clientes_actual) ? data.clientes_actual : [];
+    guardarClientesDB();
+    renderClientesSelect();
+    updateScore();
+    if(status) status.textContent='Base actualizada: '+mesAnteriorDB.length+' cierres anteriores | '+clientesDB.length+' clientes a medir.';
+  }catch(e){
+    console.error(e);
+    cargarClientesDB();
+    if(status) status.textContent='No pude conectar con Sheets. Se usó la última base guardada en este navegador.';
+    alert('No pude cargar la base desde Google Sheets. Revisá que el Apps Script tenga el doGet publicado.\n\nDetalle: '+e.message);
+  }
+}
+
+
 async function exportar(){
   var sc=calcAll();
   var tot=Math.round((sc.d+sc.e+sc.a+sc.p+sc.s)*10)/10;
@@ -1275,9 +1252,9 @@ function resetAll(){
   renderAll(); updateScore(); goPage(0);
 }
 
-cargarClientesDB();
 renderAll();
 updateScore();
+cargarBasesDesdeSheets();
 </script>
 </body>
 </html>
