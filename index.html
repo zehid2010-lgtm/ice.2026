@@ -509,7 +509,7 @@ Tucumán;Zehid, Ricardo Miguel Antonio;3140;3135959;Flores Maria Celeste;Tradici
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(0)">← Inicio</button>
-    <button class="btn btn-success" onclick="exportar()">📤 Guardar</button>
+    <button class="btn btn-success" onclick="exportar()">📤 Guardar en Sheets</button>
     <button class="btn btn-secondary" onclick="resetAll()" style="flex:0.6;font-size:12px">🔄 Nuevo</button>
   </div>
 </div>
@@ -1193,12 +1193,15 @@ function navBack(){
   }
 }
 
-function exportar(){
-  var sc=calcAll();
-  var tot=Math.round((sc.d+sc.e+sc.a+sc.p+sc.s)*10)/10;
-  var cliente=document.getElementById('inp-cliente').value||'(sin nombre)';
-  var ruta=document.getElementById('inp-ruta').value||'(sin ruta)';
-  var txt='ICE 2026 — '+DATA[seg].label+'\nCliente: '+cliente+' | Ruta: '+ruta+
+const WEBAPP_RESULTADOS_URL = 'https://script.google.com/macros/s/AKfycbx8MnzJY4LhlW52JXNkaKr1tJOb3wQnHN0n5uIFzngAA45y1jE6fzFitx0GOK7OiTHO/exec';
+
+function fechaArgentina(){
+  var d=new Date();
+  return d.toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function armarResumenTexto(sc,tot,cliente,ruta){
+  return 'ICE 2026 — '+DATA[seg].label+'\nCliente: '+cliente+' | Ruta: '+ruta+
     '\n━━━━━━━━━━━━━━━━━━━━'+
     '\nDisponibilidad: '+sc.d+' pts'+
     '\nEDF / Frío:     '+sc.e+' pts'+
@@ -1207,8 +1210,60 @@ function exportar(){
     (DATA[seg].sovi.length?'\nSOVI:           '+sc.s+' pts':'')+
     '\n━━━━━━━━━━━━━━━━━━━━'+
     '\nTOTAL:          '+tot+' / 100 pts';
-  if(navigator.clipboard){navigator.clipboard.writeText(txt);}
-  alert('Resumen copiado:\n\n'+txt);
+}
+
+function armarPayloadResultado(sc,tot){
+  var clienteInput=document.getElementById('inp-cliente').value||'';
+  var rutaInput=document.getElementById('inp-ruta').value||'';
+  var codigo = selectedCliente && selectedCliente.codigo ? selectedCliente.codigo : '';
+  var cliente = selectedCliente && selectedCliente.cliente ? selectedCliente.cliente : (clienteInput || '');
+  var ruta = selectedCliente && selectedCliente.ruta ? selectedCliente.ruta : rutaInput;
+  var previo = cierreAnterior ? (Number(puntajeAnterior)||0) : '';
+  var desvio = cierreAnterior ? Math.round((tot-(Number(puntajeAnterior)||0))*10)/10 : '';
+  return {
+    fecha: fechaArgentina(),
+    codigo: codigo,
+    cliente: cliente,
+    ruta: ruta,
+    segmento: DATA[seg].label,
+    puntaje_mes_anterior: cierreAnterior ? formatoPorcentaje(previo) : '',
+    puntaje_actual: formatoPorcentaje(tot),
+    desvio: cierreAnterior ? ((desvio>0?'+':'')+formatoPorcentaje(desvio).replace('-', '')) : '',
+    disponibilidad: sc.d,
+    edf_frio: sc.e,
+    activacion: sc.a,
+    precio: sc.p,
+    sovi: DATA[seg].sovi.length ? sc.s : ''
+  };
+}
+
+async function guardarResultadoSheets(payload){
+  if(!WEBAPP_RESULTADOS_URL) throw new Error('Falta configurar la URL del Apps Script.');
+  await fetch(WEBAPP_RESULTADOS_URL,{
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(payload)
+  });
+  return true;
+}
+
+async function exportar(){
+  var sc=calcAll();
+  var tot=Math.round((sc.d+sc.e+sc.a+sc.p+sc.s)*10)/10;
+  var cliente=document.getElementById('inp-cliente').value||'(sin nombre)';
+  var ruta=document.getElementById('inp-ruta').value||'(sin ruta)';
+  var txt=armarResumenTexto(sc,tot,cliente,ruta);
+  var payload=armarPayloadResultado(sc,tot);
+
+  if(navigator.clipboard){try{await navigator.clipboard.writeText(txt);}catch(e){}}
+
+  try{
+    await guardarResultadoSheets(payload);
+    alert('Resultado enviado a Google Sheets.\n\nTambién se copió el resumen:\n\n'+txt);
+  }catch(e){
+    alert('No pude enviar a Google Sheets. Se copió el resumen para pegarlo manualmente.\n\nDetalle: '+e.message+'\n\n'+txt);
+  }
 }
 
 function resetAll(){
