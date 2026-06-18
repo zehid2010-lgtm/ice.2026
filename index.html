@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Checklist PDV — ICE 2026 Corregido</title>
+<title>Checklist PDV — ICE 2026 Desvíos por Logrados</title>
 <style>
 
 :root{
@@ -266,6 +266,83 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
   font-weight:700;
 }
 
+/* MOTIVOS DESDE COLUMNA CONCEPTO */
+.motivos-card{
+  background:linear-gradient(180deg,#fff 0%,#fff8f5 100%);
+  border:1px solid #f0d6cf;
+  border-radius:16px;
+  padding:12px;
+  margin:.85rem 0;
+  box-shadow:var(--shadow-soft);
+}
+.motivos-title{
+  font-size:13px;
+  font-weight:900;
+  color:#b3122a;
+  margin-bottom:4px;
+}
+.motivos-sub{
+  font-size:11px;
+  color:#7c6d6a;
+  line-height:1.35;
+  margin-bottom:8px;
+}
+.motivo-row{
+  background:#fff;
+  border:1px solid #f2e3de;
+  border-radius:12px;
+  padding:9px 10px;
+  margin-top:6px;
+}
+.motivo-concepto{
+  font-size:13px;
+  font-weight:800;
+  color:#2f2524;
+  line-height:1.25;
+}
+.motivo-meta{
+  font-size:11px;
+  color:#7c6d6a;
+  margin-top:3px;
+}
+.motivo-empty{
+  font-size:12px;
+  color:#2E7D32;
+  font-weight:800;
+  background:#ECF7ED;
+  border:1px solid #bfe3c3;
+  border-radius:12px;
+  padding:9px 10px;
+}
+.motivo-warn{
+  font-size:12px;
+  color:#b3122a;
+  font-weight:800;
+  background:#fff0f3;
+  border:1px solid #f2b8c2;
+  border-radius:12px;
+  padding:9px 10px;
+}
+.motivos-resumen{
+  grid-column:1/-1;
+  background:#fff8f5;
+  border:1px solid #f0d6cf;
+  border-radius:12px;
+  padding:10px;
+  margin-top:8px;
+}
+.motivos-resumen h4{
+  font-size:13px;
+  color:#b3122a;
+  margin-bottom:6px;
+}
+.motivos-resumen ul{
+  padding-left:18px;
+  font-size:12px;
+  color:#3a2d2b;
+  line-height:1.45;
+}
+
 </style>
 </head>
 <body>
@@ -385,6 +462,7 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
       <div class="card-sub">Marcá los que están disponibles en el PDV</div>
       <div id="sku-estrat"></div>
     </div>
+    <div id="motivos-disponibilidad"></div>
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(0)">← Volver</button>
@@ -404,6 +482,7 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
       <div class="card-title">Otros checks EDF</div>
       <div id="edf-chks"></div>
     </div>
+    <div id="motivos-edf"></div>
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(1)">← Volver</button>
@@ -419,6 +498,7 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
       <div class="card-sub">Marcá solo si cumple portafolio + frentes + comunicación</div>
       <div id="act-chks"></div>
     </div>
+    <div id="motivos-activacion"></div>
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(2)">← Volver</button>
@@ -434,6 +514,7 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
       <div class="card-sub">Marcá los SKUs con precio sugerido comunicado correctamente</div>
       <div id="prec-chks"></div>
     </div>
+    <div id="motivos-precio"></div>
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(3)">← Volver</button>
@@ -449,6 +530,7 @@ details.client-import summary{font-size:12px;color:#7c6d6a;font-weight:800;curso
       <div class="card-sub">Tocá 🔴 KO o ⚪ OTRO por cada frente en góndola/ambiente</div>
       <div id="sovi-cnt"></div>
     </div>
+    <div id="motivos-sovi"></div>
   </div>
   <div class="nav-bottom">
     <button class="btn btn-secondary" onclick="goPage(4)">← Volver</button>
@@ -515,6 +597,189 @@ var DATA = {
 
 var seg='oro', chk={}, sociF={}, soviF={}, curPage=0;
 var mesAnteriorDB=[], clientesDB=[], selectedCliente=null, puntajeAnterior=0, cierreAnterior=false;
+var conceptosDB=[];
+
+
+const CSV_CONCEPTOS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRZ7XyxNR8-IPt_ARDgDy4nAL-ZEIzHO6H5WQlWREPfXPSDd9pW0STxjs-b4dRMBA/pub?gid=547934798&single=true&output=csv';
+
+function escapeHtml(v){
+  return String(v==null?'':v).replace(/[&<>"']/g,function(m){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
+
+function parseCSV(text){
+  var rows=[], row=[], cur='', inQuotes=false;
+  for(var i=0;i<text.length;i++){
+    var ch=text[i], nx=text[i+1];
+    if(ch==='"'){
+      if(inQuotes && nx==='"'){cur+='"'; i++;}
+      else inQuotes=!inQuotes;
+    }else if((ch===',' || ch===';' || ch==='\t') && !inQuotes){
+      row.push(cur); cur='';
+    }else if((ch==='\n' || ch==='\r') && !inQuotes){
+      if(ch==='\r' && nx==='\n') i++;
+      row.push(cur); cur='';
+      if(row.some(function(x){return String(x).trim()!=='';})) rows.push(row);
+      row=[];
+    }else{
+      cur+=ch;
+    }
+  }
+  row.push(cur);
+  if(row.some(function(x){return String(x).trim()!=='';})) rows.push(row);
+  return rows;
+}
+
+function normalizarClaveTexto(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+}
+
+function valorNumero(v){
+  var n=Number(String(v==null?'':v).replace('%','').replace(',','.').trim());
+  if(isNaN(n)) return null;
+  return n;
+}
+
+function conceptoEsDesvio(row){
+  // Regla correcta: si la columna Logrados viene en 0, el Concepto se muestra como desvío a corregir.
+  var logrados=valorNumero(row.logrados);
+  if(logrados!==null) return logrados===0;
+  // Respaldo por si alguna base no trae Logrados: usar Resultado < 1.
+  var res=valorNumero(row.resultado);
+  return res!==null ? res<1 : false;
+}
+
+function getCodigoSeleccionado(){
+  if(selectedCliente && selectedCliente.codigo) return String(selectedCliente.codigo).trim();
+  var ruta=document.getElementById('inp-ruta') ? document.getElementById('inp-ruta').value : '';
+  var m=String(ruta||'').match(/(\d{5,})/);
+  return m ? m[1] : '';
+}
+
+function getNombreSeleccionado(){
+  if(selectedCliente && selectedCliente.cliente) return normalizarClaveTexto(selectedCliente.cliente);
+  var inp=document.getElementById('inp-cliente');
+  return normalizarClaveTexto(inp ? inp.value : '');
+}
+
+function conceptosDelCliente(pilar){
+  var cod=getCodigoSeleccionado();
+  var nom=getNombreSeleccionado();
+  var p=normalizarClaveTexto(pilar);
+  if(!cod && !nom) return [];
+  return conceptosDB.filter(function(r){
+    var mismoPilar=normalizarClaveTexto(r.pilar)===p;
+    var mismoCodigo=cod && String(r.codigo||'').trim()===cod;
+    var mismoNombre=nom && normalizarClaveTexto(r.cliente).indexOf(nom)>=0;
+    return mismoPilar && (mismoCodigo || mismoNombre) && conceptoEsDesvio(r);
+  });
+}
+
+function textoMotivosPorPilar(pilar){
+  var arr=conceptosDelCliente(pilar);
+  if(!arr.length) return '';
+  return arr.map(function(r){return r.concepto;}).filter(Boolean).join(' | ');
+}
+
+function renderMotivosCard(pilar,titulo){
+  if(!conceptosDB.length){
+    return '<div class="motivos-card"><div class="motivos-title">Motivos — '+escapeHtml(titulo)+'</div><div class="motivo-warn">Todavía no se cargó la base de conceptos.</div></div>';
+  }
+  if(!getCodigoSeleccionado() && !getNombreSeleccionado()){
+    return '<div class="motivos-card"><div class="motivos-title">Motivos — '+escapeHtml(titulo)+'</div><div class="motivos-sub">Seleccioná un cliente para ver los motivos desde la columna Concepto.</div></div>';
+  }
+  var arr=conceptosDelCliente(pilar);
+  var html='<div class="motivos-card"><div class="motivos-title">Motivos — '+escapeHtml(titulo)+'</div>'+
+    '<div class="motivos-sub">Se toman automáticamente de la columna <b>Concepto</b> cuando <b>Logrados = 0</b>.</div>';
+  if(!arr.length){
+    html+='<div class="motivo-empty">Sin motivos pendientes para este pilar.</div>';
+  }else{
+    html+=arr.map(function(r){
+      return '<div class="motivo-row">'+
+        '<div class="motivo-concepto">'+escapeHtml(r.concepto)+'</div>'+
+        '<div class="motivo-meta">Logrado: '+escapeHtml(r.logrados)+' / Objetivo: '+escapeHtml(r.objetivo)+' · Resultado: '+escapeHtml(r.resultado)+'</div>'+
+      '</div>';
+    }).join('');
+  }
+  html+='</div>';
+  return html;
+}
+
+function renderMotivosVisibles(){
+  var m={
+    'motivos-disponibilidad':['DISPONIBILIDAD','Disponibilidad'],
+    'motivos-edf':['EDF','EDF / Frío'],
+    'motivos-activacion':['ACTIVACION','Activación'],
+    'motivos-precio':['PRECIO','Precio'],
+    'motivos-sovi':['SOVI','SOVI']
+  };
+  Object.keys(m).forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.innerHTML=renderMotivosCard(m[id][0],m[id][1]);
+  });
+}
+
+function renderResumenMotivos(){
+  var pilares=[['DISPONIBILIDAD','Disponibilidad'],['EDF','EDF / Frío'],['ACTIVACION','Activación'],['PRECIO','Precio'],['SOVI','SOVI']];
+  var items=[];
+  pilares.forEach(function(p){
+    var arr=conceptosDelCliente(p[0]);
+    if(arr.length){
+      items.push('<li><b>'+escapeHtml(p[1])+':</b> '+escapeHtml(arr.map(function(r){return r.concepto;}).join(' | '))+'</li>');
+    }
+  });
+  if(!items.length) return '<div class="motivos-resumen"><h4>Motivos desde Concepto</h4><div class="motivo-empty">Sin motivos pendientes para el cliente seleccionado.</div></div>';
+  return '<div class="motivos-resumen"><h4>Motivos desde Concepto</h4><ul>'+items.join('')+'</ul></div>';
+}
+
+async function cargarConceptosDesdeCSV(){
+  var status=document.getElementById('excel-upload-status');
+  try{
+    var resp=await fetch(CSV_CONCEPTOS_URL+'&t='+Date.now(), {method:'GET', cache:'no-store'});
+    var txt=await resp.text();
+    var rows=parseCSV(txt);
+    if(!rows.length) throw new Error('CSV vacío.');
+    var headers=rows[0].map(function(h){return normalizarClaveTexto(h);});
+    function idx(names){
+      for(var i=0;i<headers.length;i++){
+        for(var j=0;j<names.length;j++){
+          if(headers[i]===normalizarClaveTexto(names[j])) return i;
+        }
+      }
+      return -1;
+    }
+    var iOut=idx(['Out-CL','Out CL']);
+    var iPilar=idx(['Pilar']);
+    var iRegla=idx(['ID_Regla','ID Regla']);
+    var iConcepto=idx(['Concepto']);
+    var iLogrados=idx(['Logrados']);
+    var iObjetivo=idx(['Objetivo']);
+    var iResultado=idx(['Resultado']);
+    if(iOut<0 || iPilar<0 || iConcepto<0 || iLogrados<0) throw new Error('No encontré las columnas Out-CL, Pilar, Concepto y Logrados.');
+    conceptosDB=rows.slice(1).map(function(r){
+      var cc=separarCodigoCliente(r[iOut]||'');
+      return {
+        outcl:r[iOut]||'',
+        codigo:cc.codigo,
+        cliente:cc.cliente,
+        pilar:r[iPilar]||'',
+        id_regla:iRegla>=0?(r[iRegla]||''):'',
+        concepto:r[iConcepto]||'',
+        logrados:iLogrados>=0?(r[iLogrados]||''):'',
+        objetivo:iObjetivo>=0?(r[iObjetivo]||''):'',
+        resultado:iResultado>=0?(r[iResultado]||''):''
+      };
+    }).filter(function(r){return r.outcl && r.concepto;});
+    renderMotivosVisibles();
+    if(status) status.textContent=(status.textContent||'Base cargada')+' | Conceptos: '+conceptosDB.length;
+  }catch(e){
+    console.error(e);
+    conceptosDB=[];
+    renderMotivosVisibles();
+    if(status) status.textContent='No pude cargar los conceptos/motivos desde el CSV.';
+  }
+}
 
 function normalizarSegmento(v){
   v=(v||'').toString().trim().toLowerCase();
@@ -619,6 +884,7 @@ function seleccionarCliente(codigo){
   setSeg(normalizarSegmento(c.segmento));
   var sel=document.getElementById('sel-cliente'); if(sel) sel.value=codigo;
   updateScore();
+  renderMotivosVisibles();
 }
 function guardarClienteManual(){
   var c={
@@ -1078,6 +1344,7 @@ function renderAll(){
   var bp=document.getElementById('btn-next-precio');
   if(bp) bp.textContent = c.sovi.length?'Siguiente: SOVI →':'Ver resumen →';
   updateDispInd();
+  renderMotivosVisibles();
 }
 
 function renderResumen(){
@@ -1108,7 +1375,7 @@ function renderResumen(){
       mkResRow('📣 Activación',sc.a,mxa)+
       mkResRow('🏷️ Precio',sc.p,10)+
       (DATA[seg].sovi.length?mkResRow('👁️ SOVI',sc.s,10):'')+
-    '</div>';
+    '</div>'+renderResumenMotivos();
 }
 
 function mkResRow(label,val,max){
@@ -1163,6 +1430,12 @@ function armarResumenTexto(sc,tot,cliente,ruta){
     '\nPrecio:         '+sc.p+' pts'+
     (DATA[seg].sovi.length?'\nSOVI:           '+sc.s+' pts':'')+
     '\n━━━━━━━━━━━━━━━━━━━━'+
+    '\nMotivos Disponibilidad: '+(textoMotivosPorPilar('DISPONIBILIDAD')||'-')+
+    '\nMotivos EDF/Frío: '+(textoMotivosPorPilar('EDF')||'-')+
+    '\nMotivos Activación: '+(textoMotivosPorPilar('ACTIVACION')||'-')+
+    '\nMotivos Precio: '+(textoMotivosPorPilar('PRECIO')||'-')+
+    (DATA[seg].sovi.length?'\nMotivos SOVI: '+(textoMotivosPorPilar('SOVI')||'-'):'')+
+    '\n━━━━━━━━━━━━━━━━━━━━'+
     '\nTOTAL:          '+tot+' / 100 pts';
 }
 
@@ -1187,7 +1460,12 @@ function armarPayloadResultado(sc,tot){
     edf_frio: sc.e,
     activacion: sc.a,
     precio: sc.p,
-    sovi: DATA[seg].sovi.length ? sc.s : ''
+    sovi: DATA[seg].sovi.length ? sc.s : '',
+    motivo_disponibilidad: textoMotivosPorPilar('DISPONIBILIDAD'),
+    motivo_edf_frio: textoMotivosPorPilar('EDF'),
+    motivo_activacion: textoMotivosPorPilar('ACTIVACION'),
+    motivo_precio: textoMotivosPorPilar('PRECIO'),
+    motivo_sovi: DATA[seg].sovi.length ? textoMotivosPorPilar('SOVI') : ''
   };
 }
 
@@ -1255,6 +1533,7 @@ function resetAll(){
 renderAll();
 updateScore();
 cargarBasesDesdeSheets();
+cargarConceptosDesdeCSV();
 </script>
 </body>
 </html>
