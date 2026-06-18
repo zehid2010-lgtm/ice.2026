@@ -183,8 +183,9 @@ let rawRows = [];
 let clientMap = new Map();
 let clientKeys = [];
 
-function parseCSV(text){
+function parseDelimited(text, delimiter){
   const rows=[]; let row=[]; let cur=''; let inQuotes=false;
+  text = String(text || '').replace(/^\uFEFF/, '');
   for(let i=0;i<text.length;i++){
     const ch=text[i];
     if(inQuotes){
@@ -196,7 +197,7 @@ function parseCSV(text){
       }
     } else {
       if(ch==='"') inQuotes=true;
-      else if(ch===','){ row.push(cur); cur=''; }
+      else if(ch===delimiter){ row.push(cur); cur=''; }
       else if(ch==='\n'){
         row.push(cur); rows.push(row); row=[]; cur='';
       } else if(ch==='\r') {
@@ -206,11 +207,54 @@ function parseCSV(text){
     }
   }
   if(cur.length || row.length){ row.push(cur); rows.push(row); }
-  return rows;
+  return rows.filter(r => r.some(c => String(c||'').trim() !== ''));
 }
 
 function normalizeHeader(s){
-  return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return String(s||'')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+}
+
+function findIndexByAliases(headers, aliases){
+  for(const a of aliases){
+    const exact = headers.findIndex(h => h === a);
+    if(exact >= 0) return exact;
+  }
+  for(const a of aliases){
+    const partial = headers.findIndex(h => h.includes(a));
+    if(partial >= 0) return partial;
+  }
+  return -1;
+}
+
+function detectCSVStructure(text){
+  const delimiters = [',',';','\t'];
+  let best = null;
+  for(const delimiter of delimiters){
+    const rows = parseDelimited(text, delimiter);
+    for(let r=0; r<Math.min(rows.length, 30); r++){
+      const headers = rows[r].map(normalizeHeader);
+      const idxOut = findIndexByAliases(headers, ['out-cl','out cl','outcl','out - cl']);
+      const idxCodigo = findIndexByAliases(headers, ['outnum','out num','codigo','codigo cliente','cod cliente','cod']);
+      const idxCliente = findIndexByAliases(headers, ['cliente','pdv','razon social','nombre']);
+      const idxPilar = findIndexByAliases(headers, ['pilar','indicador','categoria']);
+      const idxConcepto = findIndexByAliases(headers, ['concepto','motivo','regla','descripcion']);
+      const idxLog = findIndexByAliases(headers, ['logrados','logrado','cumplido','cumplimiento']);
+      const idxObj = findIndexByAliases(headers, ['objetivo','target']);
+      const idxRes = findIndexByAliases(headers, ['resultado','result']);
+      const hasClient = idxOut >= 0 || (idxCodigo >= 0 && idxCliente >= 0);
+      const score = [hasClient, idxPilar>=0, idxConcepto>=0, idxLog>=0, idxObj>=0].filter(Boolean).length;
+      const candidate = {rows, delimiter, headerRow:r, headers, idxOut, idxCodigo, idxCliente, idxPilar, idxConcepto, idxLog, idxObj, idxRes, score};
+      if(!best || candidate.score > best.score) best = candidate;
+      if(score === 5) return candidate;
+    }
+  }
+  return best;
 }
 
 function num(v){
@@ -256,38 +300,53 @@ async function loadData(){
     setStatus('Base cargada: '+clientKeys.length+' clientes.');
   }catch(err){
     console.error(err);
-    setStatus('No pude cargar la base.');
-    alert('No pude leer la base publicada. Revisá el link CSV.\n\nDetalle: '+err.message);
+    setStatus('No pude cargar la base. Revisá que el CSV publicado sea la solapa Export con Out-CL, Pilar, Concepto, Logrados y Objetivo.');
+    alert('No pude leer la base publicada. El link debe publicar la solapa Export del archivo ICE.\n\nDetalle: '+err.message);
   }
 }
 
 function buildDataFromCSV(text){
-  const rows = parseCSV(text);
-  if(!rows.length) throw new Error('CSV vacío.');
-  const headers = rows[0].map(normalizeHeader);
-  const idxOut = headers.indexOf('out-cl');
-  const idxPilar = headers.indexOf('pilar');
-  const idxConcepto = headers.indexOf('concepto');
-  const idxLog = headers.indexOf('logrados');
-  const idxObj = headers.indexOf('objetivo');
-  const idxRes = headers.indexOf('resultado');
-  if([idxOut, idxPilar, idxConcepto, idxLog, idxObj].some(i=>i<0)){
-    throw new Error('La base no tiene las columnas esperadas: Out-CL, Pilar, Concepto, Logrados, Objetivo.');
+  const detected = detectCSVStructure(text);
+  if(!detected || detected.score < 5){
+    const found = detected && detected.headers
+      ? detected.headers.filter(Boolean).slice(0,12).join(' | ')
+      : 'sin encabezados detectados';
+    throw new Error(
+      'El CSV publicado no parece ser la solapa Export de ICE. ' +
+      'Necesito estas columnas: Out-CL, Pilar, Concepto, Logrados y Objetivo. ' +
+      'Encabezados detectados: ' + found
+    );
   }
+
+  const rows = detected.rows;
+  const idxOut = detected.idxOut;
+  const idxCodigo = detected.idxCodigo;
+  const idxCliente = detected.idxCliente;
+  const idxPilar = detected.idxPilar;
+  const idxConcepto = detected.idxConcepto;
+  const idxLog = detected.idxLog;
+  const idxObj = detected.idxObj;
+  const idxRes = detected.idxRes;
 
   rawRows = [];
   clientMap = new Map();
 
-  for(let i=1;i<rows.length;i++){
+  for(let i=detected.headerRow+1;i<rows.length;i++){
     const r = rows[i];
-    const outcl = String(r[idxOut]||'').trim();
+    const outclFromCol = idxOut >= 0 ? String(r[idxOut]||'').trim() : '';
+    const codigo = idxCodigo >= 0 ? String(r[idxCodigo]||'').trim() : '';
+    const cliente = idxCliente >= 0 ? String(r[idxCliente]||'').trim() : '';
+    const outcl = outclFromCol || (codigo && cliente ? codigo+' - '+cliente : cliente || codigo);
     if(!outcl) continue;
+
     const pilar = String(r[idxPilar]||'').trim().toUpperCase();
     const concepto = String(r[idxConcepto]||'').trim();
     const logrados = num(r[idxLog]);
     const objetivo = num(r[idxObj]);
     const resultado = idxRes>=0 ? num(r[idxRes]) : 0;
-    const info = splitClient(outcl);
+    if(!pilar || !concepto) continue;
+
+    const info = outclFromCol ? splitClient(outcl) : {codigo, nombre:cliente || outcl};
     const item = {outcl, codigo:info.codigo, nombre:info.nombre, pilar, concepto, logrados, objetivo, resultado};
     rawRows.push(item);
     if(!clientMap.has(outcl)) clientMap.set(outcl, []);
@@ -295,9 +354,11 @@ function buildDataFromCSV(text){
   }
 
   clientKeys = Array.from(clientMap.keys()).sort((a,b)=>a.localeCompare(b,'es'));
+  if(!clientKeys.length){
+    throw new Error('Leí los encabezados, pero no encontré clientes con datos.');
+  }
   populateClients(clientKeys);
 }
-
 function populateClients(keys){
   const sel = document.getElementById('clientSelect');
   sel.innerHTML = '<option value="">Seleccionar cliente...</option>' + keys.map(k=>{
